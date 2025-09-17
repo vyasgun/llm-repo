@@ -40,6 +40,10 @@ def main(output_dir, dataset_path, model_id=None):
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
+    
+    # Set model max length for sequence truncation
+    if tokenizer.model_max_length > 1024:
+        tokenizer.model_max_length = 1024
 
     print("Model loaded in full precision to the MPS device.")
 
@@ -130,16 +134,14 @@ def main(output_dir, dataset_path, model_id=None):
         fp16=False,
         push_to_hub=False,
         dataloader_pin_memory=False,
+        remove_unused_columns=False,  # Keep all columns for SFTTrainer
     )
 
     trainer = SFTTrainer(
         model=model,
         train_dataset=formatted_dataset,
         peft_config=peft_config,
-        max_seq_length=1024,        # Use this to truncate long sequences
-        tokenizer=tokenizer,
         args=training_args,
-        formatting_func=None,  # Use pre-formatted text from the dataset
     )
 
     trainer.train()
