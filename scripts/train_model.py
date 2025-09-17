@@ -14,9 +14,7 @@ def main(output_dir, dataset_path):
     print(f"Using device: {device}")
 
     # --- 2. Load the Base Model and Tokenizer ---
-    # Using microsoft/DialoGPT-medium as a non-gated alternative for demo
-    # For Llama models, you need to request access and authenticate
-    model_id = "microsoft/DialoGPT-medium"
+    model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
 
     # You CANNOT use BitsAndBytesConfig on M3, so load in bfloat16
     model = AutoModelForCausalLM.from_pretrained(
@@ -54,16 +52,37 @@ def main(output_dir, dataset_path):
     # --- 4. Configure PEFT (LoRA) ---
     print("\n--- Step 4: Configuring and Applying PEFT (LoRA) ---")
 
+    # Auto-detect target modules for LoRA
+    def find_target_modules(model):
+        """Automatically find Linear and Embedding modules for LoRA"""
+        import torch.nn as nn
+        target_modules = set()
+        for name, module in model.named_modules():
+            if isinstance(module, (nn.Linear, nn.Embedding)):
+                names = name.split('.')
+                target_modules.add(names[-1])
+        return list(target_modules)
+
+    # Get target modules automatically
+    target_modules = find_target_modules(model)
+    print(f"Auto-detected target modules: {target_modules}")
+    
+    # Filter to common attention/MLP modules if available
+    common_targets = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj", 
+                     "query", "key", "value", "dense", "fc1", "fc2", "out_proj", "c_attn", "c_proj"]
+    filtered_targets = [t for t in target_modules if t in common_targets]
+    
+    # Use filtered targets if available, otherwise use first few detected modules
+    final_targets = filtered_targets if filtered_targets else target_modules[:4]
+    print(f"Using target modules: {final_targets}")
+
     peft_config = LoraConfig(
         r=16,
         lora_alpha=16,
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=[
-            "q_proj", "v_proj", "k_proj", "o_proj",
-            "up_proj", "down_proj", "gate_proj"
-        ]
+        target_modules=final_targets
     )
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
