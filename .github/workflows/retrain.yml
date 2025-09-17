@@ -23,7 +23,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Authenticate with Hugging Face
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+        run: |
+          python -c "
+          import os
+          from huggingface_hub import login
+          token = os.getenv('HUGGINGFACE_TOKEN')
+          if token:
+              login(token)
+              print('Successfully authenticated with Hugging Face')
+          else:
+              print('Warning: HUGGINGFACE_TOKEN not found in secrets')
+          "
+
       - name: Run Training Script
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: python scripts/train_model.py --output_dir "./finetuned-model"
       
       - name: Upload Trained Model as Artifact

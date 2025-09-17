@@ -14,7 +14,9 @@ def main(output_dir, dataset_path):
     print(f"Using device: {device}")
 
     # --- 2. Load the Base Model and Tokenizer ---
-    model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
+    # Using microsoft/DialoGPT-medium as a non-gated alternative for demo
+    # For Llama models, you need to request access and authenticate
+    model_id = "microsoft/DialoGPT-medium"
 
     # You CANNOT use BitsAndBytesConfig on M3, so load in bfloat16
     model = AutoModelForCausalLM.from_pretrained(
