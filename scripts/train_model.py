@@ -5,16 +5,31 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model, PeftModel
 from trl import SFTTrainer
 
-def main(output_dir, dataset_path):
+def main(output_dir, dataset_path, model_id=None):
     """
-    Main function to perform fine-tuning of a Llama 3 model on Apple Silicon (M3).
+    Main function to perform fine-tuning of a language model on Apple Silicon (M3).
     """
     # --- 1. Set the Device for M3 Macs ---
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device}")
 
     # --- 2. Load the Base Model and Tokenizer ---
-    model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
+    # Use smaller model for CI/CD, full model for local development
+    if model_id is None:
+        # Check if running in CI (GitHub Actions)
+        import os
+        is_ci = os.getenv('CI') == 'true' or os.getenv('GITHUB_ACTIONS') == 'true'
+        
+        if is_ci:
+            # Use smaller model for CI to avoid memory issues
+            model_id = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+            print("🔧 CI environment detected: Using TinyLlama for memory efficiency")
+        else:
+            # Use full model for local development
+            model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
+            print("💻 Local environment: Using Meta-Llama-3-8B-Instruct")
+    
+    print(f"Loading model: {model_id}")
 
     # You CANNOT use BitsAndBytesConfig on M3, so load in bfloat16
     model = AutoModelForCausalLM.from_pretrained(
@@ -33,20 +48,30 @@ def main(output_dir, dataset_path):
     dataset = load_dataset("tatsu-lab/alpaca", split="train")
 
     def format_data(example):
-        text = (
-            f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
-            f"You are a helpful assistant. Provide clear and concise answers.\n"
-            f"<|eot_id|><|start_header_id|>user<|end_header_id|>\n"
-            f"{example['instruction']}\n"
-            f"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
-            f"{example['output']}<|eot_id|>"
-        )
+        # Use different templates based on model
+        if "llama" in model_id.lower():
+            # Llama 3 chat template
+            text = (
+                f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
+                f"You are a helpful assistant. Provide clear and concise answers.\n"
+                f"<|eot_id|><|start_header_id|>user<|end_header_id|>\n"
+                f"{example['instruction']}\n"
+                f"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
+                f"{example['output']}<|eot_id|>"
+            )
+        else:
+            # Generic/TinyLlama chat template
+            text = (
+                f"<|system|>\nYou are a helpful assistant. Provide clear and concise answers.</s>\n"
+                f"<|user|>\n{example['instruction']}</s>\n"
+                f"<|assistant|>\n{example['output']}</s>"
+            )
         return {"text": text}
 
     formatted_dataset = dataset.map(format_data, remove_columns=["instruction", "input", "output"])
     formatted_dataset = formatted_dataset.select(range(min(500, len(formatted_dataset))))
 
-    print(f"Dataset formatted with Llama 3 chat template. Sample:")
+    print(f"Dataset formatted with {model_id} chat template. Sample:")
     print(formatted_dataset[0]["text"])
 
     # --- 4. Configure PEFT (LoRA) ---
@@ -150,5 +175,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLM Fine-Tuning Script")
     parser.add_argument("--output_dir", type=str, required=True, help="Path to save the fine-tuned model.")
     parser.add_argument("--dataset_path", type=str, default="tatsu-lab/alpaca", help="Path or name of the training dataset.")
+    parser.add_argument("--model_id", type=str, default=None, help="Model ID to use. If not specified, auto-selects based on environment.")
     args = parser.parse_args()
-    main(args.output_dir, args.dataset_path)
+    main(args.output_dir, args.dataset_path, args.model_id)
