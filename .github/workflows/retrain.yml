@@ -1,0 +1,33 @@
+name: Simple Model Training and Artifacts
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggering from the GitHub UI
+
+jobs:
+  train-and-save:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Training Script
+        run: python scripts/train_model.py --output_dir "./finetuned-model"
+      
+      - name: Upload Trained Model as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: finetuned-llama-model
+          path: ./finetuned-model/
