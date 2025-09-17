@@ -34,7 +34,7 @@ def main(output_dir, dataset_path, model_id=None):
     # You CANNOT use BitsAndBytesConfig on M3, so load in bfloat16
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map={"": device}  # Map model to the specified device
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -49,7 +49,7 @@ def main(output_dir, dataset_path, model_id=None):
 
     def format_data(example):
         # Use different templates based on model
-        if "llama" in model_id.lower():
+        if "meta-llama" in model_id.lower():
             # Llama 3 chat template
             text = (
                 f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
@@ -136,10 +136,10 @@ def main(output_dir, dataset_path, model_id=None):
         model=model,
         train_dataset=formatted_dataset,
         peft_config=peft_config,
-        dataset_text_field="text",  # TRL handles tokenization automatically
         max_seq_length=1024,        # Use this to truncate long sequences
         tokenizer=tokenizer,
         args=training_args,
+        formatting_func=None,  # Use pre-formatted text from the dataset
     )
 
     trainer.train()
@@ -151,11 +151,14 @@ def main(output_dir, dataset_path, model_id=None):
 
     # Clean up memory before merging
     del model, trainer
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif torch.backends.mps.is_available():
+        torch.mps.empty_cache()
 
     base_model_full = AutoModelForCausalLM.from_pretrained(
         model_id,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map={"": device},
     )
 
